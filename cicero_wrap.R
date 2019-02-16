@@ -1,6 +1,4 @@
 #!/usr/bin/env Rscript
-
-
 create_input_cds <- function(data_dir){
   # read in matrix data using the Matrix package
   indata <- Matrix::readMM(paste(data_dir, "filtered_peak_bc_matrix/matrix.mtx", sep = "/") )

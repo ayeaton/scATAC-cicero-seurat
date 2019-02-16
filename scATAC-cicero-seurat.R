@@ -1,5 +1,34 @@
 #!/usr/bin/env Rscript
 
+
+#################################################################################
+  #   Wrapper code adapted from:
+  #     Title: Analysis of 10x Genomics Chromium single cell RNA-seq data using Seurat (version 3.0) starting with Cell Ranger output.
+  #     Author: Igor Dolgalev
+  #     Date: February 16th, 2019
+  #     Availability: https://github.com/igordot/genomics/blob/master/scripts/scrna-10x-seurat-3.R
+################################################################################
+
+#################################################################################
+#   scATAC code adapted from Cicero Docs:
+#     Title: Cicero
+#     Author: Hannah A. Pliner, Jay Shendure & Cole Trapnell et. al
+#     Date: 2018
+#     Availability: https://github.com/cole-trapnell-lab/cicero-release
+#     citation("cicero")
+################################################################################
+
+
+#################################################################################
+#   scRNAseq from Seurat:
+#     Title: Seurat
+#     Author: Butler et al. 
+#     Date: 2018
+#     Availability: https://github.com/satijalab/seurat
+#     citation("Seurat")
+################################################################################
+
+
 "
 Analysis of 10x Genomics Chromium single cell ATAC-seq data using Cicero (version 1.0.14) starting with Cell Ranger output.
 Basic workflow steps:
@@ -28,18 +57,87 @@ Options:
   -h, --help        show this screen
 " -> doc
 
+load_libraries <- function(){
+  library(cicero)
+  library(docopt)
+  library(Gviz)
+  library(dplyr)
+  library(readr)
+  library(glue)
+  source("cicero_wrap.R")
+}
 
-library(cicero)
-library(docopt)
-library(Gviz)
-opts = docopt(doc)
-
-opts$
 
 data_dir -- outer dir containing filteredpeakbcmatrix
 gtf_dir -- dir to gtf file
 sample_name -- name of sample to append
 analysis_dir -- output dir
 
-# Create_CDS --------------------------------------------------------------
+# ========== main ==========
 
+# output width
+options(width = 120)
+# print warnings as they occur
+options(warn = 1)
+# default type for the bitmap devices such as png (should default to "cairo")
+options(bitmapType = "cairo")
+
+# retrieve the command-line arguments
+suppressPackageStartupMessages(library(docopt))
+opts = docopt(doc)
+
+# dependencies
+load_libraries()
+
+# evaluate R expressions asynchronously when possible (such as ScaleData)
+plan("multiprocess", workers = 4)
+# increase the limit of the data to be shuttled between the processes from default 500MB to 50GB
+options(future.globals.maxSize = 50e9)
+
+# global settings
+colors_samples = c(brewer.pal(5, "Set1"), brewer.pal(8, "Dark2"), pal_igv("default")(51))
+colors_clusters = c(pal_d3("category10")(10), pal_d3("category20b")(20), pal_igv("default")(51))
+
+# analysis info
+analysis_step = "unknown"
+out_dir = opts$analysis_dir
+
+# create analysis directory if starting new analysis or exit if analysis already exists
+if (opts$create || opts$combine || opts$integrate) {
+  
+  if (opts$create) analysis_step = "create"
+  if (opts$combine) analysis_step = "normalize"
+  if (opts$combine) analysis_step = "combine"
+  if (opts$integrate) analysis_step = "integrate"
+  
+  message(glue("\n\n ========== started analysis step {analysis_step} for {out_dir} ========== \n\n"))
+  
+  if (dir.exists(out_dir)) {
+    stop(glue("output analysis dir {out_dir} already exists"))
+  } else {
+    dir.create(out_dir)
+  }
+  
+  # original working dir (before moving to analysis dir)
+  original_wd = getwd()
+  
+}
+
+# set analysis directory as working directory
+if (dir.exists(out_dir)) {
+  setwd(out_dir)
+} else {
+  stop(glue("output analysis dir {out_dir} does not exist"))
+}
+
+if (opts$create) {
+  
+  # log to file
+  write(glue("analysis: {out_dir}"), file = "create.log", append = TRUE)
+  write(glue("seurat version: {packageVersion('Cicero')}"), file = "create.log", append = TRUE)
+  
+  input_cds_obj <- create_input_cds(opts$data_dir) 
+  cicero_cds_obj <- create_cicero_cds(input_cds_obj)
+  
+  
+}
