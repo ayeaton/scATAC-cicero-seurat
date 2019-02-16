@@ -32,7 +32,7 @@
 "
 Analysis of 10x Genomics Chromium single cell ATAC-seq data using Cicero (version 1.0.14) starting with Cell Ranger output.
 Basic workflow steps:
-  1 - create - import counts matrix, perform initial QC, output RDS with CellDataSet, co-acessibility, cis-co-assibility, unnorm_gene_activity, and norm_gene_activity
+  1 - create - import counts matrix, perform initial QC, output RDS with CellDataSet,  co-acessibility, cis-co-assibility, unnorm_gene_activity, and norm_gene_activity
   2 - to_seurat - concvert to seurat object, visualize, cluster
   3 - identify - identify clusters from gene_activity based on specified clustering/resolution (higher resolution for more clusters)
 Optional steps:
@@ -42,7 +42,7 @@ Optional steps:
   de - differential expression between samples/libraries within clusters
 
 Usage:
-  scrna-10x-seurat-3.R create <analysis_dir> <sample_name> <sample_dir> [--min_genes=<n> --max_genes=<n> --mt=<n>]
+  scrna-10x-seurat-3.R create <analysis_dir> <sample_name> <data_dir> <gtf_dir> [--min_genes=<n> --max_genes=<n> --mt=<n>]
   scrna-10x-seurat-3.R cluster <analysis_dir> <num_dim>
   scrna-10x-seurat-3.R identify <analysis_dir> <resolution>
   scrna-10x-seurat-3.R combine <analysis_dir> <sample_analysis_dir>...
@@ -64,14 +64,18 @@ load_libraries <- function(){
   library(dplyr)
   library(readr)
   library(glue)
-  source("cicero_wrap.R")
+  library(future)
+  library(RColorBrewer)
+  library(refGenome)
+  #fix this
+  source("/home/ay1392/scATAC-cicero-seurat/cicero_wrap.R")
 }
 
 
-data_dir -- outer dir containing filteredpeakbcmatrix
-gtf_dir -- dir to gtf file
-sample_name -- name of sample to append
-analysis_dir -- output dir
+#ata_dir -- outer dir containing filteredpeakbcmatrix
+#gtf_dir -- dir to gtf file
+#sample_name -- name of sample to append
+#analysis_dir -- output dir
 
 # ========== main ==========
 
@@ -95,8 +99,8 @@ plan("multiprocess", workers = 4)
 options(future.globals.maxSize = 50e9)
 
 # global settings
-colors_samples = c(brewer.pal(5, "Set1"), brewer.pal(8, "Dark2"), pal_igv("default")(51))
-colors_clusters = c(pal_d3("category10")(10), pal_d3("category20b")(20), pal_igv("default")(51))
+#colors_samples = c(brewer.pal(5, "Set1"), brewer.pal(8, "Dark2"), pal_igv("default")(51))
+#colors_clusters = c(pal_d3("category10")(10), pal_d3("category20b")(20), pal_igv("default")(51))
 
 # analysis info
 analysis_step = "unknown"
@@ -134,10 +138,20 @@ if (opts$create) {
   
   # log to file
   write(glue("analysis: {out_dir}"), file = "create.log", append = TRUE)
-  write(glue("seurat version: {packageVersion('Cicero')}"), file = "create.log", append = TRUE)
+  write(glue("seurat version: {packageVersion('cicero')}"), file = "create.log", append = TRUE)
   
   input_cds_obj <- create_input_cds(opts$data_dir) 
   cicero_cds_obj <- create_cicero_cds(input_cds_obj)
+  print("co")
+  coaccessibility <- get_coaccessibility(cicero_cds_obj)
+  print("cis")
+  ciscoaccessibility_net <- get_ciscoaccessibility_net(coaccessibility)
+  print(opts$gtf_dir)
+  gene_activity <- get_gene_activity(input_cds, coaccessibility, opts$gtf_dir)
+  normalized_gene_activity <- norm_gene_activity(gene_activity)
   
+  saveRDS(list(input_cds_obj, cicero_cds_obj, coaccessibility, 
+               ciscoaccessibility_net, gene_activity, normalized_gene_activity),
+          glue("{opts$analysis_dir}/{opts$sample_name}_cicero.RDS"))
   
 }

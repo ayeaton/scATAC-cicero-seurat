@@ -51,9 +51,10 @@ create_cicero_cds <- function(input_cds){
   return(cicero_cds)
 }
 
-read_gtf <- function(gtf_dir){  
+get_gene_table <- function(gtf_dir){  
+  setwd(dirname(gtf_dir))
   ens <- ensemblGenome()
-  read.gtf <- read.gtf(ens, gft_dir)
+  read.gtf <- read.gtf(ens, basename(gtf_dir))
   gene_table <- getGeneTable(ens)
   cleaned_gene_table <- data.frame(chromosome = paste("chr",gene_table$seqid, sep = ""),
                                    start = gene_table$start, 
@@ -63,11 +64,19 @@ read_gtf <- function(gtf_dir){
   return(cleaned_gene_table)
 }
 
+#ensemble is taking forever to respond. Re do this with the genome file from Ensemble
 get_chrom_size <- function(){
-  
+  mouse.mm10.genome <- data.frame(V1 = c(paste("chr", 1:19, sep = ""), "chrY", "chrX"),
+                                  V2 <- c(195471971, 182113224, 160039680, 156508116,
+                                          151834684, 149736546, 145441459, 129401213,
+                                          124595110, 130694993, 122082543, 120129022,
+                                          120421639, 	124902244, 104043685, 98207768,
+                                          94987271, 90702639, 61431566, 171031299,
+                                          91744698))
 }
 
-get_coaccessibility <- function(cicero_cds, chrom_size){
+get_coaccessibility <- function(cicero_cds){
+  chrom_size <- get_chrom_size()
   coaccessibility <- run_cicero(cicero_cds, chrom_size) # Takes a few minutes to run
   return(coaccessibility)
 }
@@ -77,8 +86,11 @@ get_ciscoaccessibility_net <- function(coaccessibility){
   return(cis_coaccessibility_network)
 }
 
-get_gene_activity <- function(input_cds, gene_table, coaccessibility){
-  input_cds <- annotate_cds_by_site(input_cds, cleaned_gene_table)
+get_gene_activity <- function(input_cds, coaccessibility, gtf_dir){
+  wd <- getwd()
+  gene_table <- get_gene_table(gtf_dir)
+  setwd(wd)
+  input_cds <- annotate_cds_by_site(input_cds, gene_table)
   unnorm_gene_activity <- build_gene_activity_matrix(input_cds, coaccessibility)
 }
 
