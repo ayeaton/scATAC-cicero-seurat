@@ -22,7 +22,7 @@
 #################################################################################
 #   scRNAseq from Seurat:
 #     Title: Seurat
-#     Author: Butler et al. 
+#     Author: Butler et al.
 #     Date: 2018
 #     Availability: https://github.com/satijalab/seurat
 #     citation("Seurat")
@@ -108,23 +108,23 @@ out_dir = opts$analysis_dir
 
 # create analysis directory if starting new analysis or exit if analysis already exists
 if (opts$create || opts$combine || opts$integrate) {
-  
+
   if (opts$create) analysis_step = "create"
   if (opts$combine) analysis_step = "normalize"
   if (opts$combine) analysis_step = "combine"
   if (opts$integrate) analysis_step = "integrate"
-  
+
   message(glue("\n\n ========== started analysis step {analysis_step} for {out_dir} ========== \n\n"))
-  
+
   if (dir.exists(out_dir)) {
     stop(glue("output analysis dir {out_dir} already exists"))
   } else {
     dir.create(out_dir)
   }
-  
+
   # original working dir (before moving to analysis dir)
   original_wd = getwd()
-  
+
 }
 
 # set analysis directory as working directory
@@ -135,23 +135,23 @@ if (dir.exists(out_dir)) {
 }
 
 if (opts$create) {
-  
+
   # log to file
   write(glue("analysis: {out_dir}"), file = "create.log", append = TRUE)
   write(glue("seurat version: {packageVersion('cicero')}"), file = "create.log", append = TRUE)
-  
-  input_cds_obj <- create_input_cds(opts$data_dir) 
+
+  input_cds_obj <- create_input_cds(opts$data_dir)
   cicero_cds_obj <- create_cicero_cds(input_cds_obj)
   print("co")
   coaccessibility <- get_coaccessibility(cicero_cds_obj)
   print("cis")
   ciscoaccessibility_net <- get_ciscoaccessibility_net(coaccessibility)
   print(opts$gtf_dir)
-  gene_activity <- get_gene_activity(input_cds, coaccessibility, opts$gtf_dir)
-  normalized_gene_activity <- norm_gene_activity(gene_activity)
-  
-  saveRDS(list(input_cds_obj, cicero_cds_obj, coaccessibility, 
+  gene_activity <- get_gene_activity(input_cds_obj, coaccessibility, opts$gtf_dir)
+  normalized_gene_activity <- norm_gene_activity(gene_activity, input_cds_obj)
+
+  saveRDS(list(input_cds_obj, cicero_cds_obj, coaccessibility,
                ciscoaccessibility_net, gene_activity, normalized_gene_activity),
           glue("{opts$analysis_dir}/{opts$sample_name}_cicero.RDS"))
-  
+
 }
