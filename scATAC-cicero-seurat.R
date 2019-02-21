@@ -74,8 +74,7 @@ load_libraries <- function(){
   library(RColorBrewer)
   library(refGenome)
   library(ggplot2)
-})
-
+  })
 }
 
 # https://stackoverflow.com/questions/47044068/get-the-path-of-current-script/47045368
@@ -86,6 +85,11 @@ get_this_file <- function(){
        tidyr::separate(col=value, into=c("key", "value"), sep="=", fill='right') %>%
        dplyr::filter(key == "--file") %>%
        dplyr::pull(value)
+}
+
+load_source_files <- function(){
+  path_to_this_file <- get_this_file()[1]
+  source(file.path(dirname(path_to_this_file),"cicero_wrap.R"))
 }
 
 
@@ -110,19 +114,13 @@ opts = docopt(doc)
 
 # dependencies
 load_libraries()
-
-path_to_this_file <- get_this_file()[1]
-source(file.path(dirname(path_to_this_file),"cicero_wrap.R"))
-
+load_source_files()
 
 # evaluate R expressions asynchronously when possible (such as ScaleData)
 plan("multiprocess", workers = 4)
 # increase the limit of the data to be shuttled between the processes from default 500MB to 50GB
 options(future.globals.maxSize = 50e9)
 
-# global settings
-#colors_samples = c(brewer.pal(5, "Set1"), brewer.pal(8, "Dark2"), pal_igv("default")(51))
-#colors_clusters = c(pal_d3("category10")(10), pal_d3("category20b")(20), pal_igv("default")(51))
 
 # analysis info
 analysis_step = "unknown"
@@ -144,7 +142,9 @@ if (opts$create || opts$combine || opts$integrate) {
     dir.create(out_dir)
   }
 
-  #sink(paste(opts$analysis_dir, "/", opts$sample_name, 'log.txt', sep = ""), type = "message")
+  file = file(paste(opts$analysis_dir, "/", opts$sample_name, 'log.txt', sep = ""), 'w')
+
+  sink(file, type = "message")
 
   # original working dir (before moving to analysis dir)
   original_wd = getwd()

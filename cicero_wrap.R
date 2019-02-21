@@ -46,18 +46,31 @@ get_fragments_per_cell <- function(indata, min_fragments = NULL, max_fragments =
 }
 
 plot_fragments_per_cell <- function(fragments_per_cell, analysis_dir, sample_name, min_cutoff, max_cutoff){
-  boxplot <- ggplot(fragments_per_cell, aes(x = "fragment_count" , y=fragment_count)) + geom_boxplot() +
-    geom_jitter(shape=16, position=position_jitter(0.2)) + theme_minimal() +
-    geom_hline(yintercept=min_cutoff, linetype="dashed", color = "red", size=2) +
-    geom_hline(yintercept=max_cutoff, linetype="dashed", color = "red", size=2)
-  ggsave(boxplot, filename=glue("{analysis_dir}/{sample_name}_fragments_per_cell.png"), device = "png")
 
-  log10_fragments_per_cell <- log10(fragments_per_cell)
+  message(names(fragments_per_cell) )
+  boxplot_colors <- c("orange", "sky blue")
 
-  log10_boxplot <- ggplot(log10_fragments_per_cell, aes(x = "fragment_count" , y=fragment_count)) +
-    geom_boxplot()+ geom_jitter(shape=16, position=position_jitter(0.2)) + theme_minimal() +
-    geom_hline(yintercept=log10(min_cutoff), linetype="dashed", color = "red", size=2) +
-    geom_hline(yintercept=log10(max_cutoff), linetype="dashed", color = "red", size=2)
+
+  fragments_per_cell$cutoff_col <- rep("cut", nrow(fragments_per_cell))
+  pass_ind <- which((fragments_per_cell > min_cutoff) & (fragments_per_cell < max_cutoff))
+  fragments_per_cell$cutoff_col[pass_ind] <- "kept"
+
+  boxplot_raw <- ggplot(fragments_per_cell, aes(x = "fragment_count" , y=fragment_count)) + geom_boxplot() +
+    geom_jitter(aes(colour = cutoff_col), shape=16,
+   position=position_jitter(0.2)) + theme_minimal() +
+   scale_color_manual(values = boxplot_colors)
+
+  ggsave(boxplot_raw,    filename=glue("{analysis_dir}/{sample_name}_fragments_per_cell.png"), device = "png")
+
+
+
+  fragments_per_cell$log10_fragment_count <- log10(fragments_per_cell$fragment_count)
+
+  log10_boxplot <- ggplot(fragments_per_cell, aes(x = "fragment_count" , y=log10_fragment_count)) + geom_boxplot() +
+    geom_jitter(aes(colour = cutoff_col), shape=16,
+   position=position_jitter(0.2)) + theme_minimal() +
+   scale_color_manual(values = boxplot_colors)
+
   ggsave(log10_boxplot, filename=glue("{analysis_dir}/{sample_name}_log10_fragments_per_cell.png"), device = "png")
 }
 
@@ -65,7 +78,6 @@ plot_fragments_per_cell <- function(fragments_per_cell, analysis_dir, sample_nam
 filter_10x <- function(indata, fragments_per_cell, cellinfo, min_cutoff=NULL, max_cutoff=NULL){
   # filter
   pass_ind <- which((fragments_per_cell > min_cutoff) & (fragments_per_cell < max_cutoff))
-
 
   pass_cells <- indata[,pass_ind]
 
