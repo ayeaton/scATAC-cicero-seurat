@@ -1,12 +1,12 @@
 #!/usr/bin/env Rscript
-create_input_cds <- function(data_dir){
+read_10x <- function(data_dir){
   # read in matrix data using the Matrix package
   indata <- Matrix::readMM(paste(data_dir, "filtered_peak_bc_matrix/matrix.mtx", sep = "/") )
   # binarize the matrix
   indata@x[indata@x > 0] <- 1
 
   # format cell info
-  cellinfo <- read.table(paste(data_dir,"filtered_peak_bc_matrix/barcodes.tsv", sep = "/") )
+  cellinfo <- read.table(paste(data_dir,"filtered_peak_bc_matrix/barcodes.tsv", sep = "/"), stringsAsFactors = F)
   row.names(cellinfo) <- cellinfo$V1
   names(cellinfo) <- "cells"
 
@@ -18,8 +18,67 @@ create_input_cds <- function(data_dir){
 
   row.names(indata) <- row.names(peakinfo)
   colnames(indata) <- row.names(cellinfo)
+  return(list(indata=indata, peakinfo=peakinfo, cellinfo= cellinfo))
+}
 
-  # make CDS
+get_fragments_per_cell <- function(indata, min_fragments = NULL, max_fragments = NULL){
+  fragments_per_cell <- data.frame(fragment_count=Matrix::colSums(indata))
+  # get the quantile vals
+  low_quantile <- fragments_per_cell$fragment_count %>% quantile(0.02) %>% round(1)
+  high_quantile <- fragments_per_cell$fragment_count %>% quantile(0.98) %>% round(1)
+
+  # set cutoff values
+  if(is.null(min_fragments)){
+    min_cutoff = low_quantile
+  } else{
+    min_cutoff = min_fragments
+    names(min_cutoff) <- "min_fragments"
+  }
+
+  if(is.null(max_fragments)){
+    max_cutoff = high_quantile
+  } else{
+    max_cutoff = max_fragments
+    names(max_cutoff) <- "max_framents"
+  }
+
+  return(list(fragments_per_cell=fragments_per_cell, min_cutoff=min_cutoff, max_cutoff=max_cutoff))
+}
+
+plot_fragments_per_cell <- function(fragments_per_cell, analysis_dir, sample_name, min_cutoff, max_cutoff){
+  boxplot <- ggplot(fragments_per_cell, aes(x = "fragment_count" , y=fragment_count)) + geom_boxplot() +
+    geom_jitter(shape=16, position=position_jitter(0.2)) + theme_minimal() +
+    geom_hline(yintercept=min_cutoff, linetype="dashed", color = "red", size=2) +
+    geom_hline(yintercept=max_cutoff, linetype="dashed", color = "red", size=2)
+  ggsave(boxplot, filename=glue("{analysis_dir}/{sample_name}_fragments_per_cell.png"), device = "png")
+
+  log10_fragments_per_cell <- log10(fragments_per_cell)
+
+  log10_boxplot <- ggplot(log10_fragments_per_cell, aes(x = "fragment_count" , y=fragment_count)) +
+    geom_boxplot()+ geom_jitter(shape=16, position=position_jitter(0.2)) + theme_minimal() +
+    geom_hline(yintercept=log10(min_cutoff), linetype="dashed", color = "red", size=2) +
+    geom_hline(yintercept=log10(max_cutoff), linetype="dashed", color = "red", size=2)
+  ggsave(log10_boxplot, filename=glue("{analysis_dir}/{sample_name}_log10_fragments_per_cell.png"), device = "png")
+}
+
+# FiLTER Cell info
+filter_10x <- function(indata, fragments_per_cell, cellinfo, min_cutoff=NULL, max_cutoff=NULL){
+  # filter
+  pass_ind <- which((fragments_per_cell > min_cutoff) & (fragments_per_cell < max_cutoff))
+
+
+  pass_cells <- indata[,pass_ind]
+
+  pass_cellinfo <- as.data.frame(cellinfo[pass_ind,])
+
+  names(pass_cellinfo) <- "cells"
+  rownames(pass_cellinfo) <- pass_cellinfo$cells
+  return(list(pass_indata=pass_cells, pass_cellinfo=pass_cellinfo))
+
+}
+
+create_input_cds <- function(indata, cellinfo, peakinfo){
+  #read in 10x data
   fd <- methods::new("AnnotatedDataFrame", data = peakinfo)
   pd <- methods::new("AnnotatedDataFrame", data = cellinfo)
   input_cds <-  suppressWarnings(newCellDataSet(indata,
@@ -55,7 +114,6 @@ get_gene_table <- function(gtf_dir){
   setwd(dirname(gtf_dir))
   ens <- ensemblGenome()
   read.gtf <- read.gtf(ens, basename(gtf_dir))
-  print("getgenetable")
   gene_table <- getGeneTable(ens)
   cleaned_gene_table <- data.frame(chromosome = paste("chr",gene_table$seqid, sep = ""),
                                    start = gene_table$start,
@@ -87,14 +145,15 @@ get_ciscoaccessibility_net <- function(coaccessibility){
   return(cis_coaccessibility_network)
 }
 
-get_gene_activity <- function(input_cds, coaccessibility, gtf_dir){
+get_gene_activity <- function(input_cds, coaccessibility, gtf_dir, verbose = FALSE){
+  say <- message
+  if (!verbose){
+    say <- function(message) invisible(NULL)
+  }
   wd <- getwd()
-  print("get gtf")
   gene_table <- get_gene_table(gtf_dir)
   setwd(wd)
-  print("input cds")
   input_cds <- annotate_cds_by_site(input_cds, gene_table)
-  print("unnorm")
   unnorm_gene_activity <- build_gene_activity_matrix(input_cds, coaccessibility)
 }
 
