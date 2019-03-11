@@ -3,7 +3,8 @@
 
 #################################################################################
   #   Wrapper code adapted from:
-  #     Title: Analysis of 10x Genomics Chromium single cell RNA-seq data using Seurat (version 3.0) starting with Cell Ranger output.
+  #     Title: Analysis of 10x Genomics Chromium single cell RNA-seq data using
+  #            Seurat (version 3.0) starting with Cell Ranger output.
   #     Author: Igor Dolgalev
   #     Date: February 16th, 2019
   #     Availability: https://github.com/igordot/genomics/blob/master/scripts/scrna-10x-seurat-3.R
@@ -33,16 +34,19 @@
 Analysis of 10x Genomics Chromium single cell ATAC-seq data using Cicero (version 1.0.14) starting with Cell Ranger output.
 Basic workflow steps:
   1 - create - import counts matrix, perform initial QC, output RDS with CellDataSet,  co-acessibility, cis-co-assibility, unnorm_gene_activity, and norm_gene_activity
-  2 - to_seurat - concvert to seurat object, visualize, cluster
-  3 - identify - identify clusters from gene_activity based on specified clustering/resolution (higher resolution for more clusters)
+  2 - normalize_cicero - import unnormalized gene activities and normalize across samples
+  3 - to_seurat - concvert to seurat object, visualize, cluster
+  4 - identify - identify clusters from gene_activity based on specified clustering/resolution (higher resolution for more clusters)
 Optional steps:
-  normalize - gene activities of several samples
   combine - merge multiple seurat objects
   integrate - perform integration (batch correction) across multiple seurat objects
   de - differential expression between samples/libraries within clusters
 
 Usage:
-  scrna-10x-seurat-3.R create <analysis_dir> <sample_name> <data_dir> <gtf_dir> [--min_genes=<n> --max_genes=<n> --mt=<n>]
+  scrna-10x-seurat-3.R create <analysis_dir> <sample_name> <data_dir> <gtf_dir> [--min_fragments=<n> --max_fragments=<n> --mt=<n>]
+  scrna-10x-seurat-3.R normalize_cicero <analysis_dir> <analysis_name> <sample_names>... <sample_analysis_dirs>...
+  scrna-10x-seurat-3.R to_seurat <analysis_dir>
+  scrna-10x-seurat-3.R cicerobulk_toseurat <sample_analysis_dirs> <sample_names> <analysis_name>
   scrna-10x-seurat-3.R cluster <analysis_dir> <num_dim>
   scrna-10x-seurat-3.R identify <analysis_dir> <resolution>
   scrna-10x-seurat-3.R combine <analysis_dir> <sample_analysis_dir>...
@@ -65,6 +69,7 @@ load_libraries <- function(){
 
   suppressPackageStartupMessages({
   library(cicero)
+  library(Seurat)
   library(docopt)
   library(Gviz)
   library(tidyverse)
@@ -142,7 +147,8 @@ if (opts$create || opts$combine || opts$integrate) {
     dir.create(out_dir)
   }
 
-  file = file(paste(opts$analysis_dir, "/", opts$sample_name, 'log.txt', sep = ""), 'w')
+  file = file(paste(opts$analysis_dir, "/", opts$sample_name, 'log.txt', sep = ""),
+   'w')
 
   sink(file, type = "message")
 
@@ -159,52 +165,23 @@ if (dir.exists(out_dir)) {
 }
 
 if (opts$create) {
-
-  # log to file
-  message(glue("analysis: {out_dir}"), file = "create.log", append = TRUE)
-  message(glue("seurat version: {packageVersion('cicero')}"),
-    file = "create.log", append = TRUE)
-
-  # read in 10x
-  # return indata, peakinfo, and cellinfo as a list
-  indata_peakinfo_cellinfo  <- read_10x(opts$data_dir)
-
-  # get fragments per cell from indata, and output
-  # return fragments_per_cell, min_cutoff and max_cutoff as a list
-  fragments_per_cell <- get_fragments_per_cell(indata_peakinfo_cellinfo$indata,
-    min_fragments = NULL, max_fragments = NULL)
-
-  # plots the fragments per cell and the cutoff values
-  plot_fragments_per_cell(fragments_per_cell$fragments_per_cell,
-    opts$analysis_dir, opts$sample_name, fragments_per_cell$min_cutoff, fragments_per_cell$max_cutoff)
-
-  # filter the data using the cutoff values
-  # return filtered indata and filtered cellinfo
-  filtered_indata_cellinfo <- filter_10x(indata_peakinfo_cellinfo$indata, fragments_per_cell$fragments_per_cell,
-     indata_peakinfo_cellinfo$cellinfo, fragments_per_cell$min_cutoff,
-     fragments_per_cell$max_cutoff)
-
-  # returns celldataset
-  input_cds_obj <- create_input_cds(filtered_indata_cellinfo$pass_indata,
-    filtered_indata_cellinfo$pass_cellinfo, indata_peakinfo_cellinfo$peakinfo)
-
-  # returns cicero celldataset
-  cicero_cds_obj <- create_cicero_cds(input_cds_obj)
-
-  # returns coaccessibility object
-  coaccessibility <- get_coaccessibility(cicero_cds_obj)
-
-  # returns cis coaccessibility object
-  ciscoaccessibility_net <- get_ciscoaccessibility_net(coaccessibility)
-
-  # returns unnormalized gene activities
-  gene_activity <- get_gene_activity(input_cds_obj, coaccessibility, opts$gtf_dir)
-
-  # returns normalized gene activities
-  normalized_gene_activity <- norm_gene_activity(gene_activity, input_cds_obj)
-
-
-  saveRDS(list(input_cds_obj, cicero_cds_obj, coaccessibility,
-               ciscoaccessibility_net, gene_activity, normalized_gene_activity),
+  # create RDS that contains the cicero object outputs
+  cicero_obj_list <- execute_cicero_wraps(opts$analysis_dir, opts$sample_name, opts$data_dir, opts$gtf_dir, opts$min_fragments)
+  saveRDS(cicero_obj_list,
           glue("{opts$analysis_dir}/{opts$sample_name}_cicero.RDS"))
+} else if(opts$normalize_cicero){
+  # given the location of the cicero objects, grab unnorm_gene_activity and
+  # num_genes 
+  list_unnormed_gene_activity <- get_bulk_gene_activity(opts$sample_names, opts$sample_analysis_dirs)
+  uniform_gene_activities <- make_gene_activities_uniform(list_unnormed_gene_activity$unnorm_gene_list, opts$sample_names)
+  normalize_bulk_activity <- normalize_bulk(uniform_gene_activities, 
+                                            list_unnormed_gene_activity$num_genes)
+  saveRDS(normalize_bulk_activity,
+          glue("{opts$analysis_dir}/{opts$analysis_name}_cicero_norm.RDS"))
+  save_seurat_objs(normalize_bulk_activity, out_dir,list_unnormed_gene_activity$fragment_counts)
+}else if(opts$cicerobulk_toseurat){
+  combine <- combine_seurat_obj(opts$sample_analysis_dirs, opts$sample_names, opt$analysis_name)
+}else if(opts$to_seurat){
+  cicero_obj <- read_cicero_obj(glue("{opts$analysis_dir}/{opts$sample_name}_cicero.RDS"))
+  seurat_obj <- variance_plots(cicero_obj$normalized_gene_activity[[1]], opts$sample_name, out_dir)
 }
